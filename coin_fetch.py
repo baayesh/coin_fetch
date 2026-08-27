@@ -11,17 +11,23 @@ Binance API key with READ PERMISSION ONLY:
       [ ] Enable Withdrawals             <-- LEAVE OFF
     Restrict access to your IP address.
 
-    export BINANCE_KEY="..."      # never paste these into a chat
-    export BINANCE_SECRET="..."
+Put the credentials in a .env file next to this script (never paste them into
+a chat), one entry per line:
 
-Without those env vars the script still runs and just skips the account section.
+    BINANCE_KEY=...
+    BINANCE_SECRET=...
+
+.env is loaded automatically at startup and is excluded from git via
+.gitignore. Without those credentials set the script still runs and just
+skips the account section.
 
 Drawn levels live in levels.json next to this file, e.g.:
     {"BTCUSDT": {"82896.24": "resistance", "62701.39": "support"},
      "DOGEUSDT": {"0.10103": "resistance"},
      "SOLUSDT": {"96.46": "breaking point"}}
 
-Usage:  python3 coin_fetch.py > report.md
+Usage:  python3 coin_fetch.py
+        (writes reports/coin_fetch_YYYY-MM-DD_HH-MM-SS.md)
 """
 
 import os, json, time, hmac, hashlib, pathlib
@@ -29,12 +35,16 @@ from urllib.parse import urlencode
 
 import requests
 import pandas as pd
+from dotenv import load_dotenv
+
+HERE = pathlib.Path(__file__).parent
+load_dotenv(HERE / ".env")
 
 BASE = "https://api.binance.com"
 PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "TRXUSDT", "DOGEUSDT", "ADAUSDT"]
 BTC_PAIRS = ["ETHBTC", "SOLBTC", "XRPBTC", "TRXBTC", "DOGEBTC", "ADABTC"]
 TFS = ["1m", "1w", "1d", "4h", "1h"]
-HERE = pathlib.Path(__file__).parent
+REPORTS_DIR = HERE / "reports"
 
 
 # ---------------------------------------------------------------- indicators
@@ -183,11 +193,20 @@ def levels_section():
 
 if __name__ == "__main__":
     stamp = time.strftime("%Y-%m-%d %H:%M:%S %Z")
-    print(f"# Coin Fetch Report\n\nGenerated: {stamp}\n")
     mkt, spot = market_table()
-    print("## Market\n")
-    print(mkt.to_markdown(index=False, floatfmt=".8g"))
-    print("\n## Alt / BTC ratios\n")
-    print(btc_ratio_table().to_markdown(index=False, floatfmt=".8g"))
-    print(levels_section())
-    print(account_section(spot))
+
+    parts = [
+        f"# Coin Fetch Report\n\nGenerated: {stamp}\n",
+        "## Market\n",
+        mkt.to_markdown(index=False, floatfmt=".8g"),
+        "\n## Alt / BTC ratios\n",
+        btc_ratio_table().to_markdown(index=False, floatfmt=".8g"),
+        levels_section(),
+        account_section(spot),
+    ]
+    report = "\n".join(parts)
+
+    REPORTS_DIR.mkdir(exist_ok=True)
+    out_path = REPORTS_DIR / f"coin_fetch_{time.strftime('%Y-%m-%d_%H-%M-%S')}.md"
+    out_path.write_text(report)
+    print(f"Written to {out_path}")
