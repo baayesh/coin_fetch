@@ -33,7 +33,7 @@ import pandas as pd
 BASE = "https://api.binance.com"
 PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "TRXUSDT", "DOGEUSDT", "ADAUSDT"]
 BTC_PAIRS = ["ETHBTC", "SOLBTC", "XRPBTC", "TRXBTC", "DOGEBTC", "ADABTC"]
-TFS = ["1w", "1d", "4h", "1h"]
+TFS = ["1m", "1w", "1d", "4h", "1h"]
 HERE = pathlib.Path(__file__).parent
 
 
