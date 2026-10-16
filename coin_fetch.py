@@ -17,6 +17,18 @@ a chat), one entry per line:
     BINANCE_KEY=...
     BINANCE_SECRET=...
 
+To email each report as an attachment, also add (any SMTP server works; for
+Gmail use smtp.gmail.com, port 587 and an App Password):
+
+    SMTP_HOST=smtp.gmail.com
+    SMTP_PORT=587          # 587 = STARTTLS (default), 465 = SSL
+    SMTP_USER=you@example.com
+    SMTP_PASSWORD=...
+    MAIL_TO=you@example.com,other@example.com
+    MAIL_FROM=you@example.com   # optional, defaults to SMTP_USER
+
+Email is skipped if SMTP_HOST or MAIL_TO is unset.
+
 .env is loaded automatically at startup and is excluded from git via
 .gitignore. Without those credentials set the script still runs and just
 skips the account section.
@@ -30,7 +42,8 @@ Usage:  python3 coin_fetch.py
         (writes reports/coin_fetch_YYYY-MM-DD_HH-MM-SS.md)
 """
 
-import os, json, time, hmac, hashlib, pathlib
+import os, json, time, hmac, hashlib, pathlib, smtplib, ssl, sys
+from email.message import EmailMessage
 from urllib.parse import urlencode
 
 import requests
@@ -191,6 +204,34 @@ def levels_section():
     return "\n".join(out)
 
 
+def send_email(path, body):
+    """Email the report (attached + inline). Returns False if email isn't configured."""
+    host, to = os.environ.get("SMTP_HOST"), os.environ.get("MAIL_TO")
+    if not host or not to:
+        return False
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    user, pw = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASSWORD")
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Coin Fetch Report {time.strftime('%Y-%m-%d %H:%M')}"
+    msg["From"] = os.environ.get("MAIL_FROM") or user
+    msg["To"] = to
+    msg.set_content(body)
+    msg.add_attachment(body.encode(), maintype="text", subtype="markdown", filename=path.name)
+
+    ctx = ssl.create_default_context()
+    if port == 465:
+        smtp = smtplib.SMTP_SSL(host, port, context=ctx, timeout=30)
+    else:
+        smtp = smtplib.SMTP(host, port, timeout=30)
+        smtp.starttls(context=ctx)
+    with smtp:
+        if user and pw:
+            smtp.login(user, pw)
+        smtp.send_message(msg)
+    return True
+
+
 if __name__ == "__main__":
     stamp = time.strftime("%Y-%m-%d %H:%M:%S %Z")
     mkt, spot = market_table()
@@ -210,3 +251,9 @@ if __name__ == "__main__":
     out_path = REPORTS_DIR / f"coin_fetch_{time.strftime('%Y-%m-%d_%H-%M-%S')}.md"
     out_path.write_text(report)
     print(f"Written to {out_path}")
+
+    try:
+        print("Emailed report" if send_email(out_path, report) else "Email not configured, skipped")
+    except Exception as e:  # report is already saved; surface the failure in cron.log
+        print(f"Email failed: {e}", file=sys.stderr)
+        sys.exit(1)
